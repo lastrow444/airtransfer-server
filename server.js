@@ -4,52 +4,48 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-
-// السماح بالاتصال من أي دومين (Netlify وغيره)
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+  cors: { origin: "*" }
 });
 
-const rooms = new Map();
+const MAX_CONCURRENT_ROOMS = 1500; // حد الأقصى 1500 غرفة (3000 جهاز)
+const rooms = {};
 
-function generateRoomCode() {
+function generateUniqueCode() {
   let code;
   do {
     code = Math.floor(100000 + Math.random() * 900000).toString();
-  } while (rooms.has(code));
+  } while (rooms[code]);
   return code;
 }
 
-app.get('/', (req, res) => {
-  res.send('AirTransfer Signaling Server is Running Live!');
-});
-
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
-
+  
   socket.on('create-room', () => {
-    const code = generateRoomCode();
-    rooms.set(code, { host: socket.id, peer: null });
-    socket.join(code);
-    socket.emit('room-created', { code });
+    const currentRoomsCount = Object.keys(rooms).length;
+    if (currentRoomsCount >= MAX_CONCURRENT_ROOMS) {
+      return socket.emit('error-msg', 'عذراً، وصل التطبيق للحد الأقصى من الاتصالات المتزامنة (1500 غرفة). يرجى المحاولة لاحقاً.');
+    }
+
+    const roomCode = generateUniqueCode();
+    rooms[roomCode] = { host: socket.id, peer: null };
+    socket.join(roomCode);
+    socket.emit('room-created', { code: roomCode });
   });
 
   socket.on('join-room', ({ code }) => {
-    const room = rooms.get(code);
+    const room = rooms[code];
     if (!room) {
-      return socket.emit('error-msg', 'كود الغرفة غير صحيح أو انتهت صلاحيته');
+      return socket.emit('error-msg', 'كود الغرفة غير صحيح أو غير موجود!');
     }
     if (room.peer) {
-      return socket.emit('error-msg', 'الغرفة مكتملة بالفعل');
+      return socket.emit('error-msg', 'الغرفة مكتملة بالفعل بوجود طرفين!');
     }
 
     room.peer = socket.id;
     socket.join(code);
-    socket.emit('room-joined', { code });
-    io.to(room.host).emit('peer-joined', { peerId: socket.id });
+    socket.emit('room-joined');
+    socket.to(room.host).emit('peer-joined', { peerId: socket.id });
   });
 
   socket.on('signal', ({ target, signal }) => {
@@ -57,10 +53,14 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    for (const [code, room] of rooms.entries()) {
+    for (const code in rooms) {
+      const room = rooms[code];
       if (room.host === socket.id || room.peer === socket.id) {
-        io.to(code).emit('peer-disconnected');
-        rooms.delete(code);
+        const otherId = room.host === socket.id ? room.peer : room.host;
+        if (otherId) {
+          io.to(otherId).emit('peer-disconnected');
+        }
+        delete rooms[code];
         break;
       }
     }
@@ -68,6 +68,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Signaling Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
