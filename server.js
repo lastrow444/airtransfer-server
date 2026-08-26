@@ -4,48 +4,70 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
+
+// السماح بالاتصال من أي دومين (Netlify وغيره)
 const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] }
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
 });
 
 const rooms = new Map();
 
+function generateRoomCode() {
+  let code;
+  do {
+    code = Math.floor(100000 + Math.random() * 900000).toString();
+  } while (rooms.has(code));
+  return code;
+}
+
+app.get('/', (req, res) => {
+  res.send('AirTransfer Signaling Server is Running Live!');
+});
+
 io.on('connection', (socket) => {
-  // إنشاء غرفة بكود مؤقت
+  console.log('Client connected:', socket.id);
+
   socket.on('create-room', () => {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    rooms.set(code, [socket.id]);
+    const code = generateRoomCode();
+    rooms.set(code, { host: socket.id, peer: null });
     socket.join(code);
     socket.emit('room-created', { code });
   });
 
-  // الانضمام لغرفة عبر الكود
   socket.on('join-room', ({ code }) => {
     const room = rooms.get(code);
-    if (room && room.length === 1) {
-      room.push(socket.id);
-      socket.join(code);
-      socket.emit('room-joined', { code });
-      io.to(room[0]).emit('peer-joined', { peerId: socket.id });
-    } else {
-      socket.emit('error-msg', 'الغرفة غير موجودة أو ممتلئة.');
+    if (!room) {
+      return socket.emit('error-msg', 'كود الغرفة غير صحيح أو انتهت صلاحيته');
     }
+    if (room.peer) {
+      return socket.emit('error-msg', 'الغرفة مكتملة بالفعل');
+    }
+
+    room.peer = socket.id;
+    socket.join(code);
+    socket.emit('room-joined', { code });
+    io.to(room.host).emit('peer-joined', { peerId: socket.id });
   });
 
-  // تبادل إشارات WebRTC
   socket.on('signal', ({ target, signal }) => {
     io.to(target).emit('signal', { sender: socket.id, signal });
   });
 
   socket.on('disconnect', () => {
-    rooms.forEach((peers, code) => {
-      if (peers.includes(socket.id)) {
-        rooms.delete(code);
+    for (const [code, room] of rooms.entries()) {
+      if (room.host === socket.id || room.peer === socket.id) {
         io.to(code).emit('peer-disconnected');
+        rooms.delete(code);
+        break;
       }
-    });
+    }
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Signaling Server running on port ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`Signaling Server running on port ${PORT}`);
+});
