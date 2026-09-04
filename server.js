@@ -80,6 +80,12 @@ function startInactivityTimer(code) {
         return;
     }
 
+    // لا نغلق الغرفة ما دام لدى المستلم ملفات بانتظار تسليمها
+    if (room.deliveryPending) {
+        console.log("startInactivityTimer: Skipping - delivery pending for room", code);
+        return;
+    }
+
     if (room.inactivityTimer) {
         console.log("startInactivityTimer: Clearing existing timer for room", code);
         clearTimeout(room.inactivityTimer);
@@ -225,6 +231,23 @@ io.on("connection", (socket) => {
         console.log("session-activity: Resetting inactivity timer for room", roomCode);
         // إعادة تعيين عداد عدم النشاط عند أي نشاط
         startInactivityTimer(roomCode);
+    });
+
+    // المستلم لديه ملفات بانتظار التسليم — نوقف عداد عدم النشاط حتى ينتهي
+    socket.on("delivery-pending", ({ pending }) => {
+        console.log("delivery-pending:", pending, "from socket:", socket.id);
+        const roomCode = findRoomBySocket(socket.id);
+        if (!roomCode) return;
+        const room = rooms[roomCode];
+        if (!room) return;
+        room.deliveryPending = !!pending;
+        if (pending) {
+            console.log("delivery-pending: Stopping inactivity timer for room", roomCode);
+            stopInactivityTimer(roomCode);
+        } else {
+            console.log("delivery-pending: Resuming inactivity timer for room", roomCode);
+            startInactivityTimer(roomCode);
+        }
     });
 
     // بدء اختيار الملفات
