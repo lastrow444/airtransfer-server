@@ -1,5 +1,6 @@
 const express = require("express");
 const http = require("http");
+const https = require("https");
 const { Server } = require("socket.io");
 const path = require("path");
 
@@ -8,6 +9,85 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"] }
 });
+
+// ---------- تحليلات استخدام مجهولة ----------
+// نجمع: دولة (من السيرفر)، نوع الجهاز، النظام، أنواع الملفات، حجم/عدد/وقت النقل، الشبكة، الرفض/الانقطاع.
+// لا تُخزَّن بيانات حساسة: لا IP، لا أسماء ملفات. تُكتب في Supabase عبر REST.
+const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const SUPABASE_KEY = process.env.SUPABASE_KEY || "";
+const GEO_CACHE = new Map(); // ip -> country: نتجنّب نداءات متكررة
+
+function httpJson(url, options, bodyText) {
+  return new Promise((resolve) => {
+    const lib = /^https:/.test(url) ? https : http;
+    const req = lib.request(url, options, (res) => {
+      let data = "";
+      res.on("data", (c) => { data += c; });
+      res.on("end", () => {
+        if (!data) return resolve(null);
+        try { resolve(JSON.parse(data)); } catch (err) { resolve(null); }
+      });
+    });
+    req.on("error", () => resolve(null));
+    if (bodyText) req.write(bodyText);
+    req.end();
+  });
+}
+
+function getClientIp(socket) {
+  const xff = socket.handshake.headers["x-forwarded-for"];
+  if (xff) {
+    const first = String(xff).split(",")[0].trim();
+    if (first) return first;
+  }
+  return socket.handshake.address;
+}
+
+async function resolveCountry(ip) {
+  if (GEO_CACHE.has(ip)) return GEO_CACHE.get(ip);
+  try {
+    const data = await httpJson(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,countryCode&lang=ar`, { method: "GET" });
+    const country = data && data.status === "success" ? (data.country || data.countryCode || "غير معروف") : "غير معروف";
+    GEO_CACHE.set(ip, country);
+    return country;
+  } catch (err) {
+    return "غير معروف";
+  }
+}
+
+function writeAnalytics(event) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) return; // لم يُضبط الإعداد بعد — لا نكسر أي شيء
+  const url = `${SUPABASE_URL}/rest/v1/events`;
+  httpJson(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": SUPABASE_KEY,
+      "Authorization": `Bearer ${SUPABASE_KEY}`
+    }
+  }, JSON.stringify([event]));
+}
+
+async function ingestAnalytics(socket, payload) {
+  if (!payload || typeof payload !== "object") return;
+  const country = await resolveCountry(getClientIp(socket));
+  const event = {
+    ts: new Date().toISOString(),
+    type: String(payload.type || "unknown"),
+    country,
+    device: payload.device || null,
+    os: payload.os || null,
+    peer_device: payload.peerDevice || null,
+    direction: payload.direction || null,
+    file_count: Number.isFinite(payload.fileCount) ? payload.fileCount : null,
+    total_size: Number.isFinite(payload.totalSize) ? payload.totalSize : null,
+    file_types: Array.isArray(payload.fileTypes) ? payload.fileTypes : null,
+    duration_ms: Number.isFinite(payload.durationMs) ? payload.durationMs : null,
+    network: payload.network || null,
+    reason: payload.reason || null
+  };
+  writeAnalytics(event); // حريق وانسَ — لا يمس أداء النقل أبداً
+}
 
 // ملفات الواجهة من مجلد client
 app.use(express.static(path.join(__dirname, "../client")));
@@ -349,10 +429,21 @@ io.on("connection", (socket) => {
         destroyRoom(roomCode, "peer_left");
     });
 
+    // تحليلات من العميل — حريق وانسَ (لا تُنتظر ولا تمس أداء النقل إطلاقاً)
+    socket.on("track", (payload) => {
+        ingestAnalytics(socket, payload);
+    });
+
     // قطع الاتصال
     socket.on("disconnect", () => {
         const roomCode = findRoomBySocket(socket.id);
         if (!roomCode) return;
+        const room = rooms[roomCode];
+        // انقطاع مفاجئ أثناء نقل نشط لا يملك العميل وقت الإبلاغ عنه — نسجّله من طرف السيرفر
+        if (room && room.transferring) {
+            const device = room.host === socket.id ? (room.hostDevice || null) : (room.peerDevice || null);
+            ingestAnalytics(socket, { type: "transfer_aborted", reason: "peer_disconnected", device });
+        }
         socket.to(roomCode).emit("peer-disconnected");
         destroyRoom(roomCode, "peer_disconnected");
     });

@@ -20,8 +20,7 @@
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-
+  
   <style>
     body { font-family: 'Cairo', sans-serif; -webkit-tap-highlight-color: transparent; }
     .progress-bar { transition: width 0.15s ease-in-out; }
@@ -69,9 +68,29 @@
         <h3 id="modal-title" class="text-lg font-bold text-blue-400">AirTransfer</h3>
         <p id="modal-message" class="text-xs sm:text-sm text-slate-300 leading-relaxed"></p>
       </div>
-      <button onclick="closeModal()" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 active:scale-95 rounded-xl font-bold transition text-xs sm:text-sm shadow-md">
+      <button onclick="closeModal()" id="modal-ok-btn" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 active:scale-95 rounded-xl font-bold transition text-xs sm:text-sm shadow-md">
         موافق
       </button>
+    </div>
+  </div>
+
+  <!-- نافذة تأكيد الاستلام (قبول / رفض) -->
+  <div id="confirm-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-800 border border-slate-700 rounded-2xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl">
+      <div class="w-12 h-12 mx-auto flex items-center justify-center bg-amber-500/20 text-amber-400 rounded-full border border-amber-500/30">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+      </div>
+      <div class="space-y-1">
+        <h3 id="confirm-title" class="text-lg font-bold text-amber-400">تأكيد الاستلام</h3>
+        <p id="confirm-message" class="text-xs sm:text-sm text-slate-300 leading-relaxed"></p>
+        <p id="confirm-info" class="text-[10px] text-slate-500"></p>
+      </div>
+      <div class="flex gap-3">
+        <button id="confirm-accept-btn" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 rounded-xl font-bold transition text-xs sm:text-sm shadow-md">موافق</button>
+        <button id="confirm-reject-btn" class="flex-1 py-2.5 bg-red-600/80 hover:bg-red-600 active:scale-95 rounded-xl font-bold transition text-xs sm:text-sm shadow-md">رفض</button>
+      </div>
     </div>
   </div>
 
@@ -123,7 +142,7 @@
         </div>
 
         <div class="flex gap-2">
-          <input type="text" id="room-code-input" placeholder="أدخل الكود (6 أرقام)" maxlength="6" inputmode="numeric" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 text-center tracking-widest text-base sm:text-lg focus:outline-none focus:border-blue-500">
+          <input type="text" id="room-code-input" placeholder="أدخل كود الغرفة (6 أرقام)" maxlength="10" inputmode="numeric" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 text-center tracking-widest text-base sm:text-lg focus:outline-none focus:border-blue-500">
           <button onclick="joinRoom()" class="px-5 sm:px-6 py-3.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 rounded-xl font-bold transition text-sm sm:text-base shrink-0">
             انضمام
           </button>
@@ -150,18 +169,6 @@
             </button>
           </div>
           <p id="network-desc" class="text-[11px] opacity-80">يتم تحديد هل النقل مجاني أم يستهلك باقة البيانات...</p>
-        </div>
-
-        <!-- خيار ZIP -->
-        <div id="zip-option-container" class="bg-slate-900/70 p-3 rounded-xl border border-slate-700 flex items-center justify-between text-xs text-slate-300">
-          <div class="text-right">
-            <p class="font-bold text-white">تجميع الملفات في ملف ZIP</p>
-            <p class="text-[10px] text-slate-400">ضغط الملفات قبل الإرسال أو تجميع الاستلام في ملف واحد</p>
-          </div>
-          <label class="relative inline-flex items-center cursor-pointer shrink-0">
-            <input type="checkbox" id="zip-toggle" class="sr-only peer">
-            <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-          </label>
         </div>
 
         <!-- اختيار الملفات -->
@@ -198,7 +205,7 @@
             <div>الوقت المنقضي: <span id="transfer-elapsed" class="font-bold text-slate-300">00:00</span></div>
           </div>
 
-          <button id="cancel-btn" onclick="cancelTransfer(true)" class="w-full py-2 bg-red-600/80 hover:bg-red-600 text-white rounded-lg text-xs font-semibold transition mt-2">
+          <button id="cancel-btn" onclick="cancelTransfer(true, 'user_cancelled')" class="w-full py-2 bg-red-600/80 hover:bg-red-600 text-white rounded-lg text-xs font-semibold transition mt-2">
             إلغاء وإيقاف العملية
           </button>
 
@@ -238,6 +245,7 @@
 
     <!-- الفوتر -->
     <footer class="text-center py-3 text-xs text-slate-400 border-t border-slate-800/80 mt-3 w-full max-w-lg">
+      <p class="mb-1 text-slate-500">تُجمع بيانات استخدام مجهولة (بدون أسماء ملفات أو IP) لتحسين الخدمة</p>
       Powered By <span class="font-bold text-blue-400">EL Ghoul Dev</span> &copy; 2026
     </footer>
 
@@ -245,7 +253,12 @@
 
   <!-- JavaScript منطق التشغيل والاتصال -->
   <script>
-    const SIGNALING_SERVER = "http://192.168.1.154:3000";
+    // سيرفر الإشارات: ممكن نشرته موحدة تعمل للشبكة المحلية وللإنترنت
+// (بيانات النقل WebRTC تمر مباشرة P2P — السيرفر للتنظيم فقط)
+const SIGNALING_SERVER = "https://airtransfer-server.onrender.com";
+const DASHBOARD_URL = "https://air-transfer.netlify.app/dashboard.html";
+// SHA-256 للرمز السري للإدارة (10 أرقام) — الرمز الافتراضي: 8376192054
+const DASHBOARD_MASTER_CODE_HASH = "4c8962356ab2b6073d55e1cdb3e91e454dcc053dee6027a9d5a5e6911ac9665f";
     const CHUNK_SIZE = 64 * 1024;
     const DATA_CHANNEL_BUFFER_LIMIT = 4 * 1024 * 1024;
 
@@ -254,14 +267,13 @@
     const SHARE_MAX_TOTAL = 2 * 1024 * 1024 * 1024;   // أكثر من 2 جيجا → ZIP
     const MEMORY_SAFE_CAP = 1536 * 1024 * 1024;       // سقف للمتصفحات بلا OPFS
     const STREAM_BATCH = 4 * 1024 * 1024;             // الكتابة على القرص كل ~4MB
-    const SENDER_ZIP_MAX = 1536 * 1024 * 1024;        // حد تجميع ZIP على المرسل (1.5 جيجا)
-
+    
     let socket = null, peerConnection = null, dataChannel = null;
     let isTransferring = false, isTransferringFiles = false, shouldCancel = false;
     let isLocalNetwork = false, myRoomCode = "";
     let totalBatchSize = 0, totalBatchBytesTransferred = 0, totalBatchFilesCount = 0, receivedFilesCount = 0;
     let incomingFileInfo = null, receivedBytes = 0, receivedChunks = [];
-    let zipInstance = null, downloadQueue = [], isProcessingQueue = false;
+    let downloadQueue = [], isProcessingQueue = false;
     let transferStartTime = 0, lastSpeedCheckTime = 0, lastSpeedCheckBytes = 0;
     let wakeLock = null;
 
@@ -271,6 +283,9 @@
     let currentFileHandle = null, currentWritable = null, currentStoreName = null;
     let receivedManifest = [];   // [{ name, size, mime, handle, status }]
     let receiveReady = false, receiveDelivered = false, receivePendingDelivery = false;
+    let receiveStorageError = null, storageAbortStarted = false;
+    let batchAckResolve = null, batchAckTimer = null;
+    let storageCleanupTimer = null;
     let zipLib = null;
     let writeChain = Promise.resolve();
     let lastProgressUpdate = 0;
@@ -296,12 +311,75 @@
     const myDeviceType = detectDeviceType();
     document.getElementById("my-device-type").innerText = myDeviceType;
 
-    async function requestWakeLock() {
+    // ---------- التحليلات المجهولة (لا تُرسَل أي بيانات حساسة: لا أسماء ملفات، لا IP) ----------
+    function detectOS() {
+      const ua = navigator.userAgent;
+      if (/android/i.test(ua)) return "Android";
+      if (/iPad|iPhone|iPod/i.test(ua)) return "iOS";
+      if (/windows/i.test(ua)) return "Windows";
+      if (/mac os/i.test(ua)) return "macOS";
+      if (/linux/i.test(ua)) return "Linux";
+      return "أخرى";
+    }
+    function fileCategory(name, mime) {
+      const ext = ((name || "").split(".").pop() || "").toLowerCase();
+      if (/(image\/|\.(png|jpe?g|gif|webp|bmp|svg|heic|ico|avif))/.test(mime + ext)) return "صورة";
+      if (/(pdf)/.test(mime + ext)) return "PDF";
+      if (/(msword|wordprocessingml|\.(doc|docx|rtf))/.test(mime + ext)) return "مستند Word";
+      if (/(spreadsheet|excel|\.(xls|xlsx|csv))/.test(mime + ext)) return "جدول Excel";
+      if (/(audio\/|\.(mp3|wav|aac|ogg|flac|m4a))/.test(mime + ext)) return "صوت";
+      if (/(video\/|\.(mp4|mkv|avi|mov|webm|wmv|3gp))/.test(mime + ext)) return "فيديو";
+      if (/(zip|compressed|\.(zip|rar|7z|tar|gz))/.test(mime + ext)) return "مضغوط";
+      if (/(text\/|\.(txt|md))/.test(mime + ext)) return "نص";
+      return "أخرى";
+    }
+    function batchFileTypes(files) {
+      const set = new Set();
+      for (const f of files) set.add(fileCategory(f.name, f.type));
+      return Array.from(set);
+    }
+    function deviceContext() {
+      return { device: myDeviceType, os: detectOS(), peerDevice: peerDeviceTypeText() };
+    }
+    function peerDeviceTypeText() {
+      try { return document.getElementById("peer-device-type").innerText || ""; } catch (err) { return ""; }
+    }
+    function networkTypeLabel() {
+      return isLocalNetwork ? "same" : "different";
+    }
+    function track(type, payload) {
+      if (socket && socket.connected && type) {
+        try { socket.emit("track", Object.assign({ type }, payload || {})); } catch (err) {}
+      }
+    }
+
+    // إبقاء الجهاز صاحياً أثناء النقل (Wake Lock) — بلا أي تأثير على السرعة، كل شيء محمي بالـ try/catch
+    async function acquireWakeLock() {
+      if (!("wakeLock" in navigator)) return;
       try {
-        if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen");
+        if (wakeLock) return; // ممسوك بالفعل
+        wakeLock = await navigator.wakeLock.request("screen");
+        // إذا أسقطه المتصفح ونحن لا نزال ننقل → إعادة الطلب تلقائياً
+        wakeLock.addEventListener("release", () => {
+          wakeLock = null;
+          if ((isTransferring || receivePendingDelivery) && document.visibilityState === "visible") {
+            acquireWakeLock();
+          }
+        });
       } catch (err) {}
     }
-    document.addEventListener("click", requestWakeLock, { once: true });
+    function releaseWakeLock() {
+      const wl = wakeLock;
+      wakeLock = null;
+      if (wl) { try { wl.release(); } catch (err) {} }
+    }
+    document.addEventListener("click", () => { acquireWakeLock(); });
+    document.addEventListener("visibilitychange", () => {
+      // عند عودة التبويبة للواجهة والنقل ما زال قائماً — المتصفح يسقط القفل عند الاختفاء فيُعاد الطلب
+      if (document.visibilityState === "visible" && (isTransferring || receivePendingDelivery)) {
+        acquireWakeLock();
+      }
+    });
 
     window.addEventListener("beforeunload", (e) => {
       if (isTransferring) {
@@ -339,13 +417,18 @@
       deferredPrompt = null;
     });
 
-    function showModal(msg, title = "AirTransfer") {
+    let modalCloseCallback = null;
+    function showModal(msg, title = "AirTransfer", onClose) {
+      modalCloseCallback = onClose || null;
       document.getElementById("modal-title").innerText = title;
       document.getElementById("modal-message").innerText = msg;
       document.getElementById("custom-modal").classList.remove("hidden");
     }
     function closeModal() {
       document.getElementById("custom-modal").classList.add("hidden");
+      const cb = modalCloseCallback;
+      modalCloseCallback = null;
+      if (cb) cb();
     }
 
     function forceExitRoom(message) {
@@ -353,6 +436,12 @@
       showModal(message);
       resetToHomeScreen();
       setTimeout(() => { window.location.href = "/"; }, 3000);
+    }
+
+    function setDeliveryPending(p) {
+      receivePendingDelivery = !!p;
+      // إعلام السيرفر: يوقف عداد عدم النشاط ما دام هناك ملفات بانتظار التسليم
+      if (socket && socket.connected) socket.emit("delivery-pending", { pending: receivePendingDelivery });
     }
 
     function sendUserActivity() {
@@ -405,12 +494,14 @@
         myRoomCode = code;
         document.getElementById("generated-code").innerText = code;
         document.getElementById("room-code-display").classList.remove("hidden");
+        track("session_join", deviceContext());
         startWaitingRoomCountdown();
       });
 
       socket.on("room-joined", (data) => {
         if (data && data.peerDevice) document.getElementById("peer-device-type").innerText = data.peerDevice;
         showTransferScreen();
+        track("session_join", deviceContext());
         sendUserActivity();
       });
 
@@ -442,6 +533,7 @@
 
       socket.on("peer-disconnected", () => {
         if (isTransferring) resetTransferState();
+        track("session_end", Object.assign(deviceContext(), { reason: "peer_disconnected", network: networkTypeLabel() }));
         showModal("تم إنهاء الجلسة تلقائياً أو قام الطرف الآخر بقطع الاتصال.");
         resetToHomeScreen();
       });
@@ -458,6 +550,11 @@
     function joinRoom() {
       const codeInput = document.getElementById("room-code-input");
       const code = codeInput ? codeInput.value.trim() : "";
+      // رمز سري من 10 أرقام يفتح لوحة التحليلات بدلاً من الانضمام لأي غرفة
+      if (/^\d{10}$/.test(code)) {
+        openDashboardFromCode(code);
+        return;
+      }
       if (!/^\d{6}$/.test(code)) return showModal("يرجى إدخال كود مكون من 6 أرقام.");
       if (myRoomCode && code === myRoomCode) {
         showModal("عذراً، لا يمكنك الاقتران بنفس الجهاز! أدخل كود الجهاز الآخر.");
@@ -466,6 +563,25 @@
       }
       initSocket();
       socket.emit("join-room", { code, deviceType: myDeviceType });
+    }
+
+    function sha256Hex(text) {
+      return crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))
+        .then((buf) => Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join(""));
+    }
+
+    async function openDashboardFromCode(code) {
+      const codeInput = document.getElementById("room-code-input");
+      let match = false;
+      try {
+        match = (await sha256Hex(code)) === DASHBOARD_MASTER_CODE_HASH;
+      } catch (err) {}
+      if (match) {
+        if (codeInput) codeInput.value = "";
+        window.open(DASHBOARD_URL, "_blank");
+      } else {
+        showModal("الرمز غير صحيح — هذا الرمز مخصص للإدارة فقط.");
+      }
     }
 
     let waitingCountdownTimer = null, waitingCountdownSeconds = 60;
@@ -507,10 +623,8 @@
       isTransferringFiles = isLocked;
       const fileInput = document.getElementById("file-input");
       const dropZone = document.getElementById("drop-zone");
-      const zipToggle = document.getElementById("zip-toggle");
 
       if (fileInput) fileInput.disabled = isLocked;
-      if (zipToggle) zipToggle.disabled = isLocked;
       if (dropZone) {
         dropZone.classList.toggle("pointer-events-none", isLocked);
         dropZone.classList.toggle("opacity-50", isLocked);
@@ -521,6 +635,7 @@
     document.getElementById("file-input")?.addEventListener("click", function(e) {
       if (isTransferringFiles) { e.preventDefault(); e.stopPropagation(); return; }
       if (socket && socket.connected) socket.emit("picking-files-start");
+      acquireWakeLock(); // فترة اختيار الملفات أيضاً
     });
 
     function showTransferScreen() {
@@ -607,6 +722,14 @@
           console.error("processMessage error:", err);
         });
       };
+
+      dataChannel.onclose = () => {
+        // إن أُغلقت القناة أثناء انتظار الموافقة، حرّر المصافحة حتى لا تعلق
+        resolveBatchAck(null);
+        if (isTransferring) {
+          track("transfer_aborted", Object.assign(deviceContext(), { reason: "connection_lost", network: networkTypeLabel() }));
+        }
+      };
     }
 
     function formatBytes(bytes) {
@@ -646,6 +769,8 @@
       receiveReady = false;
       receiveDelivered = false;
       receivePendingDelivery = false;
+      receiveStorageError = null;
+      storageAbortStarted = false;
       hideReceiveUI();
       receivedManifest = [];
       stagingChunk = [];
@@ -669,14 +794,22 @@
     }
 
     function scheduleStorageCleanup() {
-      setTimeout(() => { cleanupReceiveStorage(); }, 60000);
+      if (storageCleanupTimer) clearTimeout(storageCleanupTimer);
+      storageCleanupTimer = setTimeout(() => {
+        storageCleanupTimer = null;
+        cleanupReceiveStorage();
+      }, 60000);
     }
 
-    async function beginBatchReception(totalSize) {
+    async function beginBatchReception(totalSize, fileCount) {
+      // إذا بدأ استقبال جديد قبل مرور مؤقت التنظيف، نلغي المؤقت حتى لا يمسح الملفات الجديدة
+      if (storageCleanupTimer) { clearTimeout(storageCleanupTimer); storageCleanupTimer = null; }
       if (!opfsSupported) opfsSupported = await initOpfs();
       receivedManifest = [];
       receiveReady = false;
       receiveDelivered = false;
+      receiveStorageError = null;
+      storageAbortStarted = false;
       stagingChunk = [];
       stagingChunkBytes = 0;
 
@@ -684,14 +817,96 @@
 
       if (!opfsSupported) {
         if (totalSize > MEMORY_SAFE_CAP) {
-          cancelTransfer(true);
+          try {
+            if (dataChannel && dataChannel.readyState === "open") {
+              dataChannel.send(JSON.stringify({ type: "batch-reject" }));
+            }
+          } catch (err) {}
+          cancelTransfer(true, null); // سيُسجّل كرفض من جهة المرسل — لا نكرر الحدث
           showModal("هذا المتصفح لا يدعم الكتابة المتدفقة على القرص، وحجم الدفعة أكبر من الحد الآمن (1.5 جيجابايت). استخدم متصفحاً حديثاً للنقل الأكبر.");
+        } else {
+          // بلا OPFS ضمن الحد الآمن: نُعلم المرسل بالموافقة حتى لا يعلق بانتظار رد
+          console.log("[handshake] no OPFS, auto-accepting (memory path)");
+          try {
+            if (dataChannel && dataChannel.readyState === "open") {
+              dataChannel.send(JSON.stringify({ type: "batch-accept" }));
+            }
+          } catch (err) {}
         }
         return;
       }
+
+      // بوابة تأكيد المستلم قبل حفظ أي ملف — المرسل ينتظر ردنا هنا قبل إرسال أول ملف
+      let accepted = true;
+      try {
+        accepted = await askReceiveConfirmation(totalSize, fileCount);
+      } catch (err) {
+        // أي خلل في عرض الحوار لا يجمد النقل أبداً — نكمل كالمعتاد
+        console.error("[handshake] confirm dialog error, auto-accepting:", err);
+        accepted = true;
+      }
+
+      if (accepted === false) {
+        console.log("[handshake] user rejected the receipt");
+        try {
+          if (dataChannel && dataChannel.readyState === "open") {
+            dataChannel.send(JSON.stringify({ type: "batch-reject" }));
+          }
+        } catch (err) {}
+        if (socket && socket.connected) socket.emit("cancel-transfer");
+        resetTransferState();
+        cleanupReceiveStorage();
+        showModal("تم إلغاء الاستلام — لن يتم حفظ أي ملف.");
+        return;
+      }
+
+      console.log("[handshake] user accepted, notifying sender");
+      try {
+        if (dataChannel && dataChannel.readyState === "open") {
+          dataChannel.send(JSON.stringify({ type: "batch-accept" }));
+        }
+      } catch (err) {}
+
       if (!opfsBatchDir) {
         opfsBatchDir = await opfs.getDirectoryHandle("at_" + Date.now().toString(36), { create: true });
       }
+    }
+
+    function askReceiveConfirmation(totalSize, fileCount) {
+      return new Promise((resolve) => {
+        const modal = document.getElementById("confirm-modal");
+        const count = fileCount || 1;
+        document.getElementById("confirm-title").innerText = "تأكيد الاستلام";
+        document.getElementById("confirm-message").innerText =
+          `هناك ${count} ملفاً بحجم ${formatBytes(totalSize || 0)} بانتظار الاستلام. يجب أن تتوفر مساحة كافية في القرص لاستلام هذه الملفات، وإلا ستُفقد عملية الاستلام. هل تريد الاستلام؟`;
+        const info = document.getElementById("confirm-info");
+        info.innerText = "جاري فحص المساحة المتاحة...";
+        modal.classList.remove("hidden");
+
+        let settled = false;
+        function settle(value) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(confirmTimeout);
+          modal.classList.add("hidden");
+          resolve(value);
+        }
+        document.getElementById("confirm-accept-btn").onclick = () => settle(true);
+        document.getElementById("confirm-reject-btn").onclick = () => settle(false);
+
+        // لا يبقى الحوار مفتوحاً للأبد — رفض تلقائي قبل مهلة المرسل (45 ثانية)
+        const confirmTimeout = setTimeout(() => settle(false), 45000);
+
+        if (navigator.storage && navigator.storage.estimate) {
+          navigator.storage.estimate().then(({ quota, usage }) => {
+            if (!settled) {
+              info.innerText = "المساحة المتاحة في متصفحك تقريباً: " + formatBytes(Math.max(0, (quota || 0) - (usage || 0)));
+            }
+          }).catch(() => { if (!settled) info.innerText = ""; });
+        } else {
+          info.innerText = "";
+        }
+      });
     }
 
     async function beginFileReception(info) {
@@ -718,7 +933,10 @@
       let off = 0;
       for (const chunk of payload) { buf.set(new Uint8Array(chunk), off); off += chunk.byteLength; }
       // كتابة على القرص بدون حجب سلسلة الاستقبال — الكتابات للملف الواحد تترتب عبر writeChain
-      writeChain = writeChain.then(() => currentWritable.write(buf)).catch(() => {});
+      // لو فشلت الكتابة (مثلاً امتلأ القرص) نسجّل الخطأ ولا نصمت عنه — تُوقف الدفعة فوراً
+      writeChain = writeChain.then(() => currentWritable.write(buf)).catch((err) => {
+        if (!receiveStorageError) receiveStorageError = err;
+      });
       return writeChain;
     }
 
@@ -730,17 +948,16 @@
       if (!opfsSupported) {
         // المتصفحات القديمة بلا OPFS — مسار الذاكرة (مع سقف أمان)
         const blob = new Blob(receivedChunks, { type: infoMime });
-        const zipToggle = document.getElementById("zip-toggle");
-        const isZipEnabled = zipToggle && zipToggle.checked;
-        if (isZipEnabled && zipInstance) {
-          zipInstance.file(infoName, blob);
-        } else {
-          downloadQueue.push({ blob, name: infoName, mime: infoMime });
-        }
+        downloadQueue.push({ blob, name: infoName, mime: infoMime });
       } else {
         flushStaging();
         // ننتظر اكتمال كل الكتابات المعلقة قبل إغلاق المقبض حتى لا تضيع بيانات
         await writeChain;
+        // امتلأ القرص أثناء الكتابة → نوقف الاستلام ونخبر الطرفين
+        if (receiveStorageError) {
+          await abortReceiveStorage();
+          return;
+        }
         receivedManifest.push({ name: infoName, size: infoSize, mime: infoMime, handle: currentFileHandle, status: "ok" });
         currentFileHandle = null;
         if (currentWritable) await currentWritable.close();
@@ -769,9 +986,14 @@
 
         if (msg.type === "device-info") {
           document.getElementById("peer-device-type").innerText = msg.deviceType;
+        } else if (msg.type === "batch-accept") {
+          resolveBatchAck("accept");
+        } else if (msg.type === "batch-reject") {
+          resolveBatchAck("reject");
         } else if (msg.type === "batch-start") {
           setFileInputLock(true);
           isTransferring = true;
+          acquireWakeLock(); // إبقاء الجهاز صاحياً أثناء الاستقبال
           totalBatchSize = msg.totalBatchSize;
           totalBatchFilesCount = msg.fileCount;
           receivedFilesCount = 0;
@@ -780,19 +1002,15 @@
           initTransferMetrics();
           document.getElementById("status-container").classList.remove("hidden");
           document.getElementById("overall-files-count").innerText = `0/${totalBatchFilesCount}`;
-          await beginBatchReception(msg.totalBatchSize);
-          if (!opfsSupported) {
-            const zipToggle = document.getElementById("zip-toggle");
-            zipInstance = (zipToggle && zipToggle.checked && typeof JSZip !== "undefined") ? new JSZip() : null;
-          } else {
-            zipInstance = null;
-          }
+          await beginBatchReception(msg.totalBatchSize, msg.fileCount);
         } else if (msg.type === "header") {
           await beginFileReception(msg);
           // ملف حجمه صفر ما بترسل أية قطع بيانات — ننهيه فوراً حتى لا تعلق الدفعة كاملة
           if ((msg.size || 0) === 0) await finishCurrentFile();
         } else if (msg.type === "cancel") {
-          showModal("تم إلغاء عملية النقل من قبل الطرف الآخر!");
+          // أي إلغاء من الطرف الآخر يحرّر مصافحة الانتظار فوراً
+          resolveBatchAck("reject");
+          showModal(msg.reason === "storage" ? "المستلم ألغى عملية الاستلام — لا توجد مساحة كافية لديه في القرص لإتمام عملية النقل." : "تم إلغاء عملية النقل من قبل الطرف الآخر!");
           resetTransferState();
           cleanupReceiveStorage();
         } else if (msg.type === "session-end") {
@@ -833,32 +1051,13 @@
 
       if (!opfsSupported) {
         // المسار القديم للمتصفحات بلا OPFS
-        const zipToggle = document.getElementById("zip-toggle");
-        const isZipEnabled = zipToggle && zipToggle.checked;
-        if (isZipEnabled && zipInstance) {
-          document.getElementById("current-file-text").innerText = "جاري ضغط وتنزيل ملف الـ ZIP...";
-          zipInstance.generateAsync({ type: "blob" }).then((content) => {
-            const url = URL.createObjectURL(content);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `AirTransfer_${Date.now()}.zip`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-            document.getElementById("current-file-text").innerText = "تم استلام وتحميل ملف الـ ZIP بنجاح!";
-            finalizeBatchState();
-          });
-        } else {
-          processDownloadQueue();
-        }
+        processDownloadQueue();
         return;
       }
 
       const isMobile = /Mobile|iP(hone|od)|Android|BlackBerry|IEMobile|Kindle|Silk-Accelerated/i.test(navigator.userAgent);
       const total = receivedManifest.reduce((a, m) => a + m.size, 0);
-      const userWantsZip = !!(document.getElementById("zip-toggle") && document.getElementById("zip-toggle").checked);
-      const needZip = userWantsZip || receivedManifest.length > SHARE_MAX_FILES || total > SHARE_MAX_TOTAL;
+      const needZip = receivedManifest.length > SHARE_MAX_FILES || total > SHARE_MAX_TOTAL;
 
       const readyText = document.getElementById("receive-ready-text");
       const btn = document.getElementById("receive-files-btn");
@@ -873,7 +1072,7 @@
       }
 
       // ما دام هناك ملفات مستلمة لم تُسلَّم بعد، يُبقى المستقبل الغرفة مفتوحة
-      receivePendingDelivery = true;
+      setDeliveryPending(true);
 
       if (!isMobile) {
         // الكمبيوتر: تسليم تلقائي فوري
@@ -893,8 +1092,7 @@
 
       const isMobile = /Mobile|iP(hone|od)|Android|BlackBerry|IEMobile|Kindle|Silk-Accelerated/i.test(navigator.userAgent);
       const total = receivedManifest.reduce((a, m) => a + m.size, 0);
-      const userWantsZip = !!(document.getElementById("zip-toggle") && document.getElementById("zip-toggle").checked);
-      const needZip = userWantsZip || receivedManifest.length > SHARE_MAX_FILES || total > SHARE_MAX_TOTAL;
+      const needZip = receivedManifest.length > SHARE_MAX_FILES || total > SHARE_MAX_TOTAL;
 
       const btn = document.getElementById("receive-files-btn");
       const hint = document.getElementById("receive-hint-text");
@@ -912,8 +1110,7 @@
           if (navigator.canShare({ files })) {
             if (hint) hint.innerText = "تم تحضير الملفات — اختر مكان الحفظ من النافذة.";
             await navigator.share({ files, title: "ملفات AirTransfer" });
-            receivePendingDelivery = false;
-            scheduleStorageCleanup();
+            finishDeliverySuccess("تم إرسال الملفات للتطبيق المختار.");
             return;
           }
         }
@@ -922,23 +1119,31 @@
         if (!isMobile && !needZip) {
           if (hint) hint.innerText = "جاري تنزيل الملفات مباشرة...";
           await deliverDownloadEntries();
-          receivePendingDelivery = false;
-          scheduleStorageCleanup();
+          finishDeliverySuccess("تم تنزيل الملفات بنجاح.");
           return;
         }
 
         // فوق الحدود (أو بلا دعم مشاركة): تجميع ZIP متدفق واحد
         if (hint) hint.innerText = "جاري تجهيز ملف واحد...";
         await buildStreamingZip();
-        receivePendingDelivery = false;
+        finishDeliverySuccess("تم تجميع وتنزيل كافة الملفات في ملف واحد!");
       } catch (err) {
         receiveDelivered = false;
         if (btn) btn.classList.remove("hidden");
         if (hint) hint.classList.add("hidden");
         if (err && err.name === "AbortError") return; // المستخدم ألغى نافذة المشاركة — يعيد المحاولة
         console.error("deliverReceivedFiles:", err);
-        showModal("حدث خطأ أثناء تجهيز الملفات. الملفات محفوظة على القرص — اضغط زر الاستلام للمحاولة مجدداً.");
+        showModal("حدث خطأ أثناء تجهيز الملفات (" + (err && err.message ? err.message : err) + "). الملفات محفوظة على القرص — اضغط زر الاستلام للمحاولة مجدداً.");
       }
+    }
+
+    function finishDeliverySuccess(text) {
+      const hint = document.getElementById("receive-hint-text");
+      if (hint) hint.innerText = text;
+      setDeliveryPending(false);
+      releaseWakeLock();
+      scheduleStorageCleanup();
+      // تبقى الجلسة مفتوحة — يمكن للمستخدم الاستلام أو الإرسال مجدداً
     }
 
     async function deliverDownloadEntries() {
@@ -957,51 +1162,153 @@
       }
     }
 
-    // ---------- ZIP متدفق (بلا ذاكرة) ----------
-    let OPFSWriterClass = null;
-    function createOPFSWriterClass(Z) {
-      return class OPFSWriter extends Z.Writer {
-        constructor(writable) { super(); this._w = writable; this._chain = Promise.resolve(); }
-        init() { return Promise.resolve(); }
-        writeUint8Array(array) {
-          const copy = array.slice(0);
-          this._chain = this._chain.then(() => this._w.write(copy));
-          return this._chain;
-        }
-        getData() { return this._chain.then(() => undefined); }
-        cleanUp() { return Promise.resolve(); }
-      };
-    }
-    function loadZipLib() {
-      return new Promise((resolve, reject) => {
-        if (window.zip) { OPFSWriterClass = createOPFSWriterClass(window.zip); return resolve(); }
-        const s = document.createElement("script");
-        s.src = "https://cdnjs.cloudflare.com/ajax/libs/zip.js/2.7.58/zip.min.js";
-        s.onload = () => { OPFSWriterClass = createOPFSWriterClass(window.zip); resolve(); };
-        s.onerror = () => reject(new Error("تعذر تحميل مكتبة التجميع"));
-        document.head.appendChild(s);
-      });
+    // ---------- ZIP متدفق بتقنية STORE (بلا أي مكتبة خارجية) ----------
+    const _crcTab = new Uint32Array(256);
+    (function () {
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        _crcTab[n] = c >>> 0;
+      }
+    })();
+    // تغذية CRC-32 بشكل متدرّج أثناء تمرير محتوى الملف (بداية: 0xFFFFFFFF، النهاية: ^ 0xFFFFFFFF)
+    function _crc32Feed(crc, bytes) {
+      let c = crc >>> 0;
+      for (let i = 0; i < bytes.length; i++) {
+        c = (_crcTab[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8)) >>> 0;
+      }
+      return c;
     }
     async function buildStreamingZip() {
-      await loadZipLib();
-      const zip = window.zip;
+      const enc = new TextEncoder();
+      const lsu16 = (b, v, i) => { b[i] = v & 255; b[i + 1] = (v >>> 8) & 255; };
+      const lsu32 = (b, v, i) => { b[i] = v & 255; b[i + 1] = (v >>> 8) & 255; b[i + 2] = (v >>> 16) & 255; b[i + 3] = (v >>> 24) & 255; };
+
       const zipName = `AirTransfer_${Date.now()}.zip`;
       const zipHandle = await opfsBatchDir.getFileHandle(zipName, { create: true });
       const zipWritable = await zipHandle.createWritable();
-      const writer = new zip.ZipWriter(new OPFSWriterClass(zipWritable), { level: 0 });
 
-      document.getElementById("receive-hint-text").classList.remove("hidden");
-      document.getElementById("receive-hint-text").innerText = "جاري تجميع الملفات في ملف واحد...";
+      const hint = document.getElementById("receive-hint-text");
+      hint.classList.remove("hidden");
+      hint.innerText = "جاري تجميع الملفات في ملف واحد...";
+
+      const d = new Date();
+      const dosTime = ((d.getHours() & 31) << 11) | ((d.getMinutes() & 63) << 5) | ((d.getSeconds() >> 1) & 31);
+      const dosDate = (((d.getFullYear() - 1980) & 127) << 9) | (((d.getMonth() + 1) & 15) << 5) | (d.getDate() & 31);
+
+      // أعلام: UTF-8 (بت 11) + Data Descriptor (بت 3)
+      const FLAGS = 0x0808;
+
+      let offset = 0;
+      const central = [];
+
+      async function writeArr(arr) {
+        await zipWritable.write(arr);
+        offset += arr.byteLength;
+      }
+
+      const totalBytes = receivedManifest.reduce((a, m) => a + (m.size || 0), 0);
+      let doneBytes = 0;
+      let lastPct = -1;
 
       for (const m of receivedManifest) {
+        const rawName = String(m.name || "file").split(/[\\/]/).pop() || "file";
+        const nameBytes = enc.encode(rawName);
+        const nameLen = nameBytes.length;
         const f = await m.handle.getFile();
-        await writer.add(m.name, f);
+
+        // رأس الملف المحلي (Local File Header) — الحجم والـ CRC يُكتبان لاحقاً في الـ descriptor
+        const header = new Uint8Array(30 + nameLen);
+        lsu32(header, 0x04034b50, 0);
+        lsu16(header, 20, 4);
+        lsu16(header, FLAGS, 6);
+        lsu16(header, 0, 8);          // STORE بلا ضغط
+        lsu16(header, dosTime, 10);
+        lsu16(header, dosDate, 12);
+        lsu32(header, 0, 14);
+        lsu32(header, 0, 18);
+        lsu32(header, 0, 22);
+        lsu16(header, nameLen, 26);
+        lsu16(header, 0, 28);
+        header.set(nameBytes, 30);
+        const localOffset = offset;
+        await writeArr(header);
+
+        // محتوى الملف مباشرة على القرص مع حساب الـ CRC على الطاير
+        let crc = 0xFFFFFFFF;
+        let csize = 0;
+        const reader = f.stream().getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!value || value.byteLength === 0) continue;
+          crc = _crc32Feed(crc, value);
+          await zipWritable.write(value);
+          csize += value.byteLength;
+        }
+        crc = (crc ^ 0xFFFFFFFF) >>> 0;
+
+        // Data Descriptor
+        const desc = new Uint8Array(16);
+        lsu32(desc, 0x08074b50, 0);
+        lsu32(desc, crc, 4);
+        lsu32(desc, csize, 8);
+        lsu32(desc, csize, 12);
+        await writeArr(desc);
+
+        // سجل الفهرس (بيانات وصفية فقط، لا محتوى)
+        central.push({ nameBytes, nameLen, crc, csize, localOffset });
+
+        doneBytes += csize;
+        const pct = totalBytes ? Math.min(99, Math.floor((doneBytes * 100) / totalBytes)) : 99;
+        if (pct !== lastPct && (pct % 5 === 0 || pct === 99)) {
+          lastPct = pct;
+          hint.innerText = "جاري تجميع الملفات في ملف واحد... " + pct + "%";
+        }
       }
-      await writer.close();
+
+      // سجل الفهرس المركزي
+      const cdStart = offset;
+      for (const c of central) {
+        const entry = new Uint8Array(46 + c.nameLen);
+        lsu32(entry, 0x02014b50, 0);
+        lsu16(entry, 20, 4);
+        lsu16(entry, 20, 6);
+        lsu16(entry, FLAGS, 8);
+        lsu16(entry, 0, 10);
+        lsu16(entry, dosTime, 12);
+        lsu16(entry, dosDate, 14);
+        lsu32(entry, c.crc, 16);
+        lsu32(entry, c.csize, 20);
+        lsu32(entry, c.csize, 24);
+        lsu16(entry, c.nameLen, 28);
+        lsu16(entry, 0, 30);
+        lsu16(entry, 0, 32);
+        lsu16(entry, 0, 34);
+        lsu16(entry, 0, 36);
+        lsu32(entry, 0, 38);
+        lsu32(entry, c.localOffset, 42);
+        entry.set(c.nameBytes, 46);
+        await writeArr(entry);
+      }
+      const cdSize = offset - cdStart;
+
+      // نهاية ملف ZIP (End of Central Directory)
+      const eocd = new Uint8Array(22);
+      lsu32(eocd, 0x06054b50, 0);
+      lsu16(eocd, 0, 4);
+      lsu16(eocd, 0, 6);
+      lsu16(eocd, central.length, 8);
+      lsu16(eocd, central.length, 10);
+      lsu32(eocd, cdSize, 12);
+      lsu32(eocd, cdStart, 16);
+      lsu16(eocd, 0, 20);
+      await writeArr(eocd);
+
       await zipWritable.close();
 
-      const f = await zipHandle.getFile();
-      const url = URL.createObjectURL(f);
+      const out = await zipHandle.getFile();
+      const url = URL.createObjectURL(out);
       const a = document.createElement("a");
       a.href = url;
       a.download = zipName;
@@ -1010,7 +1317,7 @@
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 1000);
 
-      document.getElementById("receive-hint-text").innerText = "تم تجميع وتنزيل كافة الملفات في ملف واحد!";
+      hint.innerText = "تم تجميع وتنزيل كافة الملفات في ملف واحد!";
       scheduleStorageCleanup();
     }
 
@@ -1063,24 +1370,78 @@
       }
     }
 
-    function buildLegacyZip(files) {
-      return new Promise((resolve, reject) => {
-        if (typeof JSZip === "undefined") { reject(new Error("JSZip غير متوفر")); return; }
-        const zip = new JSZip();
-        for (const f of files) zip.file(f.name, f);
-        // STORE (بلا ضغط) لسرعة التجميع — الهدف هو تنزيل واحد وليس تصغير الحجم هنا
-        zip.generateAsync({ type: "blob", compression: "STORE" }).then((content) => {
-          const url = URL.createObjectURL(content);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = `AirTransfer_${Date.now()}.zip`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(url), 1000);
-          resolve();
-        }).catch(reject);
-      });
+    // تجميع ملفات في ذاكرة للتنسيق القديم — نفس تنسيق STORE بلا أي مكتبة خارجية
+    async function zipBlobFromFiles(files) {
+      const enc = new TextEncoder();
+      const lsu16 = (b, v, i) => { b[i] = v & 255; b[i + 1] = (v >>> 8) & 255; };
+      const lsu32 = (b, v, i) => { b[i] = v & 255; b[i + 1] = (v >>> 8) & 255; b[i + 2] = (v >>> 16) & 255; b[i + 3] = (v >>> 24) & 255; };
+      const d = new Date();
+      const dosTime = ((d.getHours() & 31) << 11) | ((d.getMinutes() & 63) << 5) | ((d.getSeconds() >> 1) & 31);
+      const dosDate = (((d.getFullYear() - 1980) & 127) << 9) | (((d.getMonth() + 1) & 15) << 5) | (d.getDate() & 31);
+      const FLAGS = 0x0808; // UTF-8 + Data Descriptor
+
+      const parts = [];
+      const central = [];
+      let offset = 0;
+      const push = (arr) => { parts.push(arr); offset += arr.byteLength; };
+
+      for (const f of files) {
+        const rawName = String(f.name || "file").split(/[\\/]/).pop() || "file";
+        const nameBytes = enc.encode(rawName);
+        const nameLen = nameBytes.length;
+        const body = new Uint8Array(await f.arrayBuffer());
+
+        const h = new Uint8Array(30 + nameLen);
+        lsu32(h, 0x04034b50, 0); lsu16(h, 20, 4); lsu16(h, FLAGS, 6); lsu16(h, 0, 8);
+        lsu16(h, dosTime, 10); lsu16(h, dosDate, 12); lsu32(h, 0, 14); lsu32(h, 0, 18);
+        lsu32(h, 0, 22); lsu16(h, nameLen, 26); lsu16(h, 0, 28); h.set(nameBytes, 30);
+        const localOffset = offset;
+        push(h);
+
+        let crc = 0xFFFFFFFF;
+        for (let i = 0; i < body.length; i += 524288) {
+          crc = _crc32Feed(crc, body.subarray(i, Math.min(i + 524288, body.length)));
+        }
+        crc = (crc ^ 0xFFFFFFFF) >>> 0;
+        push(body);
+
+        const dsc = new Uint8Array(16);
+        lsu32(dsc, 0x08074b50, 0); lsu32(dsc, crc, 4); lsu32(dsc, body.length, 8); lsu32(dsc, body.length, 12);
+        push(dsc);
+
+        central.push({ nameBytes, nameLen, crc, csize: body.length, localOffset });
+      }
+
+      const cdStart = offset;
+      for (const c of central) {
+        const e = new Uint8Array(46 + c.nameLen);
+        lsu32(e, 0x02014b50, 0); lsu16(e, 20, 4); lsu16(e, 20, 6); lsu16(e, FLAGS, 8); lsu16(e, 0, 10);
+        lsu16(e, dosTime, 12); lsu16(e, dosDate, 14); lsu32(e, c.crc, 16); lsu32(e, c.csize, 20); lsu32(e, c.csize, 24);
+        lsu16(e, c.nameLen, 28); lsu16(e, 0, 30); lsu16(e, 0, 32); lsu16(e, 0, 34); lsu16(e, 0, 36);
+        lsu32(e, 0, 38); lsu32(e, c.localOffset, 42); e.set(c.nameBytes, 46);
+        push(e);
+      }
+      const cdSize = offset - cdStart;
+
+      const eocd = new Uint8Array(22);
+      lsu32(eocd, 0x06054b50, 0); lsu16(eocd, 0, 4); lsu16(eocd, 0, 6);
+      lsu16(eocd, central.length, 8); lsu16(eocd, central.length, 10);
+      lsu32(eocd, cdSize, 12); lsu32(eocd, cdStart, 16); lsu16(eocd, 0, 20);
+      push(eocd);
+
+      return new Blob(parts, { type: "application/zip" });
+    }
+
+    async function buildLegacyZip(files) {
+      const content = await zipBlobFromFiles(files);
+      const url = URL.createObjectURL(content);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `AirTransfer_${Date.now()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
     function triggerDownloads(files) {
@@ -1100,7 +1461,7 @@
 
     function finalizeBatchState() {
       isTransferring = false;
-      zipInstance = null;
+      releaseWakeLock();
       setFileInputLock(false);
       if (socket && socket.connected) socket.emit("transfer-end");
     }
@@ -1148,27 +1509,12 @@
 
       shouldCancel = false;
       isTransferring = true;
+      acquireWakeLock(); // إبقاء الجهاز صاحياً أثناء الإرسال
       setFileInputLock(true);
       document.getElementById("status-container").classList.remove("hidden");
       if (socket && socket.connected) socket.emit("transfer-start");
 
-      const isZipRequested = document.getElementById("zip-toggle").checked;
-      let filesToSend = Array.from(originalFiles);
-
-      if (isZipRequested && filesToSend.length > 1 && typeof JSZip !== "undefined") {
-        const rawTotal = filesToSend.reduce((acc, f) => acc + f.size, 0);
-        if (rawTotal > SENDER_ZIP_MAX) {
-          // أضخم من الحد → إرسال ملفات فردية؛ تجميع بالذاكرة على هذا الحجم سيكرّش
-          document.getElementById("current-file-text").innerText = `حجم الدفعة (${formatBytes(rawTotal)}) أكبر من 1.5 جيجا — سيتم الإرسال كملفات فردية دون تجميع.`;
-        } else {
-          document.getElementById("current-file-text").innerText = "جاري ضغط الملفات في ملف ZIP...";
-          const zip = new JSZip();
-          filesToSend.forEach(f => zip.file(f.name, f));
-          const zipBlob = await zip.generateAsync({ type: "blob" });
-          filesToSend = [new File([zipBlob], `AirTransfer_${Date.now()}.zip`, { type: "application/zip" })];
-        }
-      }
-
+      const filesToSend = Array.from(originalFiles);
       const batchSize = filesToSend.reduce((acc, f) => acc + f.size, 0);
       const maxLocal = 8 * 1024 * 1024 * 1024;
       const maxRemote = 500 * 1024 * 1024;
@@ -1187,7 +1533,35 @@
       totalBatchBytesTransferred = 0;
       initTransferMetrics();
 
+      track("transfer_start", Object.assign(deviceContext(), {
+        direction: "send",
+        fileCount: filesToSend.length,
+        totalSize: batchSize,
+        fileTypes: batchFileTypes(filesToSend),
+        network: networkTypeLabel()
+      }));
+
       dataChannel.send(JSON.stringify({ type: "batch-start", totalBatchSize, fileCount: filesToSend.length }));
+
+      // انتظار موافقة المستلم قبل إرسال أي ملف
+      const ack = await waitForBatchAck(60000);
+      if (ack !== "accept") {
+        document.getElementById("current-file-text").innerText = "تم إلغاء الإرسال.";
+        if (ack === "reject") {
+          showModal("المستلم رفض الاستلام بسبب عدم توفر مساحة كافية لاستقبال الملفات.");
+        } else {
+          showModal("المستلم لم يرد على طلب تأكيد الاستلام — تم إلغاء النقل.");
+        }
+        track("transfer_rejected", Object.assign(deviceContext(), {
+          reason: ack === "reject" ? "receiver_rejected" : "no_reply_timeout",
+          fileCount: filesToSend.length,
+          totalSize: batchSize,
+          network: networkTypeLabel()
+        }));
+        // على المهلة أخبر المستلم أيضاً حتى لا تبقى شاشته معلقة؛ على الرفض هو عارف وقام بإلغاء نفسه
+        cancelTransfer(ack === null, null); // الرفض تم تتبعه أعلاه — لا نكرر تسجيل إلغاء
+        return;
+      }
 
       for (let i = 0; i < filesToSend.length; i++) {
         if (shouldCancel) break;
@@ -1197,7 +1571,7 @@
           await sendSingleFile(file);
         } catch (error) {
           console.error("File transfer error:", error);
-          cancelTransfer(true);
+          cancelTransfer(true, "send_error");
           return showModal("حدث خطأ أثناء نقل الملف.");
         }
         if (!shouldCancel) {
@@ -1210,6 +1584,13 @@
         document.getElementById("current-file-text").innerText = "تم إرسال كافة الملفات بنجاح!";
         isTransferring = false;
         setFileInputLock(false);
+        track("transfer_complete", Object.assign(deviceContext(), {
+          direction: "send",
+          fileCount: totalBatchFilesCount,
+          totalSize: totalBatchSize,
+          durationMs: Date.now() - transferStartTime,
+          network: networkTypeLabel()
+        }));
         if (socket && socket.connected) socket.emit("transfer-end");
       }
       document.getElementById("file-input").value = "";
@@ -1259,20 +1640,71 @@
       return `${m}:${s}`;
     }
 
-    function cancelTransfer(notifyPeer = true) {
+    function cancelTransfer(notifyPeer = true, trackReason = undefined) {
       shouldCancel = true;
-      if (notifyPeer && dataChannel && dataChannel.readyState === "open") {
-        dataChannel.send(JSON.stringify({ type: "cancel" }));
+      try {
+        if (notifyPeer && dataChannel && dataChannel.readyState === "open") {
+          dataChannel.send(JSON.stringify({ type: "cancel" }));
+        }
+      } catch (err) {
+        // قد تُغلق القناة في اللحظة نفسها — لا نسمح لخطأ في الإرسال بإيقاف التنظيف
+        console.error("cancelTransfer send error:", err);
+      }
+      // تتبع الإلغاء: null = لا نتبع (مسار سُجّل للتو كرفض)؛ undefined = إلغاء عام؛ غير ذلك = سبب محدد
+      if (trackReason !== null) {
+        track("transfer_aborted", Object.assign(deviceContext(), {
+          reason: trackReason === undefined ? "cancelled" : trackReason,
+          network: networkTypeLabel()
+        }));
       }
       if (socket && socket.connected) socket.emit("transfer-end");
       resetTransferState();
       cleanupReceiveStorage();
     }
 
+    // مصافحة قبول الدفعة: المرسل ينتظر رد المستلم قبل أن يرسل أي ملف
+    function waitForBatchAck(timeoutMs) {
+      clearTimeout(batchAckTimer);
+      return new Promise((resolve) => {
+        batchAckResolve = resolve;
+        batchAckTimer = setTimeout(() => {
+          batchAckResolve = null;
+          resolve(null); // مهلة بلا رد من المستلم
+        }, timeoutMs);
+      });
+    }
+
+    function resolveBatchAck(type) {
+      if (batchAckTimer) { clearTimeout(batchAckTimer); batchAckTimer = null; }
+      if (batchAckResolve) {
+        const r = batchAckResolve;
+        batchAckResolve = null;
+        r(type);
+      }
+    }
+
+    async function abortReceiveStorage() {
+      if (storageAbortStarted) return;
+      storageAbortStarted = true;
+      try {
+        if (dataChannel && dataChannel.readyState === "open") {
+          dataChannel.send(JSON.stringify({ type: "cancel", reason: "storage" }));
+        }
+      } catch (err) {}
+      if (socket && socket.connected) socket.emit("cancel-transfer");
+      // أغلق أي مقبض كتابة مفتوح حتى لا يمنع حذف مجلد الدفعة
+      if (currentWritable) { try { await currentWritable.close(); } catch (err) {} }
+      currentWritable = null;
+      currentFileHandle = null;
+      resetTransferState();
+      cleanupReceiveStorage();
+      showModal("توقف الاستلام — لا توجد مساحة كافية في القرص على هذا الجهاز لإتمام عملية النقل. تم إلغاء العملية.");
+    }
+
     function resetTransferState() {
       isTransferring = false;
+      releaseWakeLock();
       shouldCancel = false;
-      zipInstance = null;
       downloadQueue = [];
       isProcessingQueue = false;
       setFileInputLock(false);

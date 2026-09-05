@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>لوحة تحليلات AirTransfer</title>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --card: #0f172a;
+      --border: #1e293b;
+      --txt: #e2e8f0;
+      --muted: #94a3b8;
+      --blue: #38bdf8;
+      --green: #34d399;
+      --amber: #fbbf24;
+      --red: #f87171;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      color: var(--txt);
+      font-family: "Segoe UI", Tahoma, "Noto Sans Arabic", sans-serif;
+      min-height: 100vh;
+    }
+    .hidden { display: none !important; }
+
+    /* بوابة كلمة السر */
+    #gate {
+      min-height: 100vh;
+      display: flex; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .gate-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      width: 100%; max-width: 360px;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0,0,0,.4);
+    }
+    .gate-card h1 {
+      font-size: 20px; font-weight: 800;
+      background: linear-gradient(90deg, var(--blue), var(--green));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+      margin-bottom: 4px;
+    }
+    .gate-card p { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+    .gate-card input {
+      width: 100%; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid var(--border); background: #1e293b; color: var(--txt);
+      font-size: 14px; text-align: center; outline: none;
+      margin-bottom: 8px;
+    }
+    .gate-card input:focus { border-color: var(--blue); }
+    .gate-card button {
+      width: 100%; margin-top: 12px; padding: 10px;
+      background: #0284c7; border: none; border-radius: 10px;
+      color: #fff; font-weight: 700; font-size: 14px; cursor: pointer;
+    }
+    .gate-card button:hover { background: #0369a1; }
+    .gate-err { color: var(--red); font-size: 12px; margin-top: 10px; min-height: 16px; }
+
+    /* الداشبورد */
+    #dash { padding: 16px; max-width: 1100px; margin: 0 auto; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 10px; margin-bottom: 16px;
+    }
+    header h1 {
+      font-size: 20px; font-weight: 800;
+      background: linear-gradient(90deg, var(--blue), var(--green));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    header .sub { color: var(--muted); font-size: 11px; }
+    .refresh-btn {
+      background: var(--card); border: 1px solid var(--border); color: var(--blue);
+      padding: 8px 14px; border-radius: 10px; font-weight: 700; font-size: 12px; cursor: pointer;
+    }
+    .refresh-btn:hover { border-color: var(--blue); }
+
+    .cards {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px; margin-bottom: 16px;
+    }
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px; text-align: center;
+    }
+    .card .label { color: var(--muted); font-size: 11px; margin-bottom: 6px; }
+    .card .value { font-size: 22px; font-weight: 800; color: var(--blue); }
+    .card .value.green { color: var(--green); }
+    .card .value.amber { color: var(--amber); }
+    .card .value.red { color: var(--red); }
+
+    .grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 12px;
+    }
+    .chart-box {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 14px;
+    }
+    .chart-box h3 { font-size: 13px; color: var(--txt); margin-bottom: 4px; font-weight: 700; }
+    .chart-box .cap { font-size: 10px; color: var(--muted); margin-bottom: 10px; }
+    .chart-box canvas { max-height: 240px; }
+    .empty { color: var(--muted); font-size: 12px; padding: 12px; text-align: center; }
+    .fail-note { color: var(--muted); font-size: 11px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+  <div id="gate">
+    <div class="gate-card">
+      <h1>AirTransfer</h1>
+      <p>لوحة التحليلات — أدخل كلمة السر</p>
+      <input type="text" id="gate-user" placeholder="اسم المستخدم" autocomplete="username">
+      <input type="password" id="gate-pass" placeholder="كلمة المرور" autocomplete="current-password">
+      <button onclick="unlock()">دخول</button>
+      <div class="gate-err" id="gate-err"></div>
+    </div>
+  </div>
+
+  <div id="dash" class="hidden">
+    <header>
+      <div>
+        <h1>لوحة تحليلات AirTransfer</h1>
+        <div class="sub" id="last-update">جاري التحميل...</div>
+      </div>
+      <button class="refresh-btn" onclick="load()">🔄 تحديث</button>
+    </header>
+
+    <div class="cards">
+      <div class="card"><div class="label">جلسات</div><div class="value" id="c-sessions">–</div></div>
+      <div class="card"><div class="label">نقل مكتمل</div><div class="value green" id="c-complete">–</div></div>
+      <div class="card"><div class="label">رفض / انقطاع</div><div class="value red" id="c-fail">–</div></div>
+      <div class="card"><div class="label">حجم منقول</div><div class="value amber" id="c-size">–</div></div>
+      <div class="card"><div class="label">متوسط الحجم</div><div class="value" id="c-avgsize">–</div></div>
+      <div class="card"><div class="label">متوسط الوقت</div><div class="value" id="c-avgtime">–</div></div>
+    </div>
+
+    <div class="grid">
+      <div class="chart-box"><h3>النقل باليوم</h3><div class="cap">آخر 14 يوم</div><canvas id="ch-daily"></canvas></div>
+      <div class="chart-box"><h3>حسب الدولة</h3><div class="cap">الجلسات</div><canvas id="ch-country"></canvas></div>
+      <div class="chart-box"><h3>الأجهزة</h3><div class="cap">الجلسات</div><canvas id="ch-device"></canvas></div>
+      <div class="chart-box"><h3>اتجاه النقل</h3><div class="cap">من أرسل ← إلى من</div><canvas id="ch-direction"></canvas></div>
+      <div class="chart-box"><h3>أنظمة التشغيل</h3><div class="cap">الجلسات</div><canvas id="ch-os"></canvas></div>
+      <div class="chart-box"><h3>أنواع الملفات</h3><div class="cap">الدفعات المنقولة</div><canvas id="ch-types"></canvas></div>
+      <div class="chart-box"><h3>الشبكة</h3><div class="cap">نفس الشبكة أم عبر الإنترنت</div><canvas id="ch-network"></canvas></div>
+      <div class="chart-box"><h3>أسباب الفشل</h3><div class="cap">رفض الاستلام / الإلغاء / الانقطاع</div><canvas id="ch-fail"></canvas></div>
+    </div>
+    <div class="fail-note" id="foot-note">تُجمع البيانات بشكل مجهول (بدون IP أو أسماء ملفات). نسب الفشل <span id="fail-rate">–</span>.</div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script>
+    // ══════════════════════════════ الإعداد ══════════════════════════════
+    const CONFIG = {
+      // رابط مشروع Supabase (من Settings → API): https://xxxx.supabase.co
+      url: "SUPABASE_URL:sb_publishable_6enZ5ZomW8wRXKMa_en9iQ_W7HvWJi1",
+      // مفتاح supabase anon public (نفس المفتاح المستخدم في السيرفر) — تحتاج الجدول events مع RLS يسمح بالإدراج والقراءة
+      key: "SUPABASE_KEY:sb_secret_qlhUR_y3hLisxJ6zWKDuCw_pMXRr_e9",
+      // SHA-256 لاسم المستخدم. الافتراضي: admin
+      userHash: "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+      // SHA-256 لكلمة المرور. الافتراضية: airtransfer2026
+      passHash: "f13086ae038b7f59f33b73b1226d83e9d4f6c606f881c4485c327bf6cc68ddcd"
+    };
+    // ═════════════════════════════════════════════════════════════════════
+
+    Chart.defaults.font.family = "'Segoe UI', Tahoma, 'Noto Sans Arabic', sans-serif";
+    Chart.defaults.color = "#94a3b8";
+
+    let allEvents = [];
+    const charts = {};
+
+    function clean(s) {
+      return String(s || "")
+        .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, "")
+        .replace(/\s+/g, " ").trim() || "غير معروف";
+    }
+
+    function fmtSize(bytes) {
+      if (!bytes) return "0";
+      if (bytes >= 1024 ** 3) return (bytes / 1024 ** 3).toFixed(2) + " جيجا";
+      if (bytes >= 1024 ** 2) return (bytes / 1024 ** 2).toFixed(1) + " ميجا";
+      return (bytes / 1024).toFixed(0) + " كيلو";
+    }
+
+    async function sha256(text) {
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    async function unlock() {
+      const err = document.getElementById("gate-err");
+      const user = document.getElementById("gate-user").value;
+      const pass = document.getElementById("gate-pass").value;
+      err.innerText = "";
+      if (!user || !pass) { err.innerText = "أدخل اسم المستخدم وكلمة المرور"; return; }
+      try {
+        const [uh, ph] = await Promise.all([sha256(user), sha256(pass)]);
+        if (uh !== CONFIG.userHash || ph !== CONFIG.passHash) {
+          err.innerText = "اسم المستخدم أو كلمة المرور غير صحيحة";
+          return;
+        }
+      } catch (e) {
+        err.innerText = "تعذّر التحقق داخل المتصفح";
+        return;
+      }
+      document.getElementById("gate").classList.add("hidden");
+      document.getElementById("dash").classList.remove("hidden");
+      load();
+    }
+    function gateEnter(ev) {
+      if (ev.key === "Enter") { ev.preventDefault(); unlock(); }
+    }
+    document.getElementById("gate-user").addEventListener("keydown", gateEnter);
+    document.getElementById("gate-pass").addEventListener("keydown", gateEnter);
+
+    function makeChart(id, type, labels, data, colors, isDur = false) {
+      const el = document.getElementById(id);
+      const parent = el.parentElement;
+      const empty = parent.querySelector(".empty");
+      if (data.every(v => (v || 0) === 0)) {
+        if (charts[id]) { charts[id].destroy(); charts[id] = null; }
+        el.classList.add("hidden");
+        if (!empty) {
+          const d = document.createElement("div");
+          d.className = "empty";
+          d.innerText = "لا توجد بيانات بعد";
+          parent.appendChild(d);
+        }
+        return;
+      }
+      if (empty) empty.remove();
+      el.classList.remove("hidden");
+      if (charts[id]) charts[id].destroy();
+      charts[id] = new Chart(el, {
+        type: type,
+        data: {
+          labels,
+          datasets: [{
+            data,
+            backgroundColor: colors,
+            borderWidth: 0,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          indexAxis: type === "horizontalBar" ? "y" : undefined,
+          plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 11 } } } },
+          scales: type === "bar" || type === "horizontalBar" ? {
+            x: { grid: { color: "#1e293b" }, ticks: { font: { size: 10 } } },
+            y: { beginAtZero: true, grid: { color: "#1e293b" }, ticks: { font: { size: 10 } } }
+          } : (isDur ? { x: { grid: { color: "#1e293b" }, ticks: { font: { size: 10 } } }, y: { beginAtZero: true, grid: { color: "#1e293b" } } } : {})
+        }
+      });
+    }
+
+    function countBy(rows, field, limit = 12) {
+      const m = new Map();
+      for (const r of rows) {
+        const k = r[field] || "غير معروف";
+        m.set(k, (m.get(k) || 0) + 1);
+      }
+      const sorted = Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, limit);
+      return { labels: sorted.map(x => x[0]), values: sorted.map(x => x[1]) };
+    }
+
+    function render() {
+      const sessions = allEvents.filter(e => e.type === "session_join");
+      const starts = allEvents.filter(e => e.type === "transfer_start");
+      const complete = allEvents.filter(e => e.type === "transfer_complete");
+      const rejected = allEvents.filter(e => e.type === "transfer_rejected");
+      const aborted = allEvents.filter(e => e.type === "transfer_aborted");
+      const transfers = [...starts, ...complete];
+
+      // ── بطاقات ──
+      const totalSize = complete.reduce((a, e) => a + (e.total_size || 0), 0);
+      const completeWithDur = complete.filter(e => e.duration_ms);
+      const avgDur = completeWithDur.length ? completeWithDur.reduce((a, e) => a + (e.duration_ms || 0), 0) / completeWithDur.length / 1000 : 0;
+      const avgSize = complete.length ? totalSize / complete.length : 0;
+
+      document.getElementById("c-sessions").innerText = sessions.length;
+      document.getElementById("c-complete").innerText = complete.length;
+      document.getElementById("c-fail").innerText = rejected.length + aborted.length;
+      document.getElementById("c-size").innerText = fmtSize(totalSize);
+      document.getElementById("c-avgsize").innerText = fmtSize(avgSize);
+      document.getElementById("c-avgtime").innerText = avgDur ? Math.round(avgDur) + " ث" : "–";
+      const allTransfers = complete.length + rejected.length + aborted.length;
+      const rate = allTransfers ? Math.round(((rejected.length + aborted.length) / allTransfers) * 100) : 0;
+      document.getElementById("fail-rate").innerText = rate + "%";
+
+      // ── النقل باليوم (آخر 14 يوم) ──
+      const days = [];
+      const dayMap = new Map();
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+        days.push(d);
+        dayMap.set(d, 0);
+      }
+      for (const e of complete) {
+        const d = (e.ts || "").slice(0, 10);
+        if (dayMap.has(d)) dayMap.set(d, dayMap.get(d) + 1);
+      }
+      const palette = ["#38bdf8", "#34d399", "#fbbf24", "#f87171", "#a78bfa", "#22d3ee", "#fb923c", "#4ade80", "#f472b6", "#94a3b8"];
+      makeChart("ch-daily", "bar", days.map(d => d.slice(5)), days.map(d => dayMap.get(d)), palette.slice(0, 1));
+
+      // ── الدولة ──
+      const country = countBy(sessions, "country");
+      makeChart("ch-country", "horizontalBar", country.labels, country.values, palette);
+
+      // ── الأجهزة ──
+      const device = countBy(sessions, "device");
+      makeChart("ch-device", "doughnut", device.labels.map(clean), device.values, palette);
+
+      // ── اتجاه النقل ──
+      const dirMap = new Map();
+      for (const e of starts) {
+        const label = `${clean(e.device)} ← ${clean(e.peer_device)}`;
+        dirMap.set(label, (dirMap.get(label) || 0) + 1);
+      }
+      const dirs = Array.from(dirMap.entries()).sort((a, b) => b[1] - a[1]);
+      makeChart("ch-direction", "doughnut", dirs.map(x => x[0]), dirs.map(x => x[1]), palette);
+
+      // ── أنظمة التشغيل ──
+      const os = countBy(sessions, "os");
+      makeChart("ch-os", "pie", os.labels, os.values, palette);
+
+      // ── أنواع الملفات ──
+      const typeMap = new Map();
+      for (const e of starts) {
+        if (Array.isArray(e.file_types)) {
+          for (const t of e.file_types) typeMap.set(t, (typeMap.get(t) || 0) + 1);
+        }
+      }
+      const types = Array.from(typeMap.entries()).sort((a, b) => b[1] - a[1]);
+      makeChart("ch-types", "pie", types.map(x => x[0]), types.map(x => x[1]), palette);
+
+      // ── الشبكة ──
+      const netMap = new Map();
+      for (const e of transfers) {
+        const k = e.network === "same" ? "نفس الشبكة" : e.network === "different" ? "عبر الإنترنت" : "غير معروف";
+        netMap.set(k, (netMap.get(k) || 0) + 1);
+      }
+      const nets = Array.from(netMap.entries());
+      makeChart("ch-network", "doughnut", nets.map(x => x[0]), nets.map(x => x[1]), ["#34d399", "#fbbf24", "#94a3b8"]);
+
+      // ── أسباب الفشل ──
+      const reasonLabels = {
+        receiver_rejected: "رفض المستلم الاستلام",
+        no_reply_timeout: "لم يرد المستلم (مهلة)",
+        user_cancelled: "إلغاء يدوي",
+        send_error: "خطأ إرسال",
+        connection_lost: "انقطاع الاتصال",
+        peer_disconnected: "انقطاع الشريك",
+        insufficient_storage: "عدم مساحة كافية",
+        cancelled: "إلغاء عام"
+      };
+      const failMap = new Map();
+      for (const e of [...rejected, ...aborted]) {
+        const lbl = reasonLabels[e.reason] || e.reason || "فشل آخر";
+        failMap.set(lbl, (failMap.get(lbl) || 0) + 1);
+      }
+      const fails = Array.from(failMap.entries()).sort((a, b) => b[1] - a[1]);
+      makeChart("ch-fail", "bar", fails.map(x => x[0]), fails.map(x => x[1]), palette.slice(2));
+
+      const now = new Date();
+      document.getElementById("last-update").innerText =
+        "آخر تحديث: " + now.toLocaleString("ar", { dateStyle: "medium", timeStyle: "short" }) +
+        " — " + allEvents.length + " حدث مسجّل";
+    }
+
+    async function load() {
+      const btn = document.querySelector(".refresh-btn");
+      try {
+        const url = `${CONFIG.url}/rest/v1/events?select=*&limit=10000&order=ts.desc`;
+        const res = await fetch(url, {
+          headers: {
+            "apikey": CONFIG.key,
+            "Authorization": `Bearer ${CONFIG.key}`
+          }
+        });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const rows = await res.json();
+        allEvents = rows || [];
+        render();
+      } catch (err) {
+        document.getElementById("last-update").innerText = "خطأ في جلب البيانات: " + err.message;
+      }
+    }
+  </script>
+</body>
+</html>
