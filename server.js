@@ -86,6 +86,12 @@ function startInactivityTimer(code) {
         return;
     }
 
+    // لا نفعّل عداد عدم النشاط أثناء نقل قائم مهما طال (نقل يتجاوز 2 دقيقة)
+    if (room.transferring) {
+        console.log("startInactivityTimer: Skipping - transfer in progress for room", code);
+        return;
+    }
+
     if (room.inactivityTimer) {
         console.log("startInactivityTimer: Clearing existing timer for room", code);
         clearTimeout(room.inactivityTimer);
@@ -168,7 +174,8 @@ io.on("connection", (socket) => {
             peerDevice: null,
             waitingTimer: null,
             inactivityTimer: null,
-            pickingTimer: null
+            pickingTimer: null,
+            transferring: false
         };
 
         socket.join(code);
@@ -283,9 +290,17 @@ io.on("connection", (socket) => {
     socket.on("transfer-status-change", ({ transferring }) => {
         const roomCode = findRoomBySocket(socket.id);
         if (!roomCode) return;
+        const room = rooms[roomCode];
+        if (!room) return;
 
-        if (transferring) stopInactivityTimer(roomCode);
-        else startInactivityTimer(roomCode);
+        room.transferring = !!transferring;
+        if (room.transferring) {
+            stopInactivityTimer(roomCode);
+            stopPickingTimer(roomCode);
+        } else {
+            stopPickingTimer(roomCode);
+            startInactivityTimer(roomCode);
+        }
 
         io.to(roomCode).emit("transfer-status-change", { transferring });
     });
@@ -294,15 +309,23 @@ io.on("connection", (socket) => {
     socket.on("transfer-start", () => {
         const roomCode = findRoomBySocket(socket.id);
         if (!roomCode) return;
-        // إيقاف عداد عدم النشاط أثناء النقل
+        const room = rooms[roomCode];
+        if (!room) return;
+        // أثناء النقل: لا عدادات إطلاقاً مهما طال النقل
+        room.transferring = true;
         stopInactivityTimer(roomCode);
+        // دفاع: لو بقي عداد اختيار شغالاً لأي سبب، أوقفه
+        stopPickingTimer(roomCode);
     });
 
     // انتهاء النقل
     socket.on("transfer-end", () => {
         const roomCode = findRoomBySocket(socket.id);
         if (!roomCode) return;
-        // إعادة تشغيل عداد عدم النشاط بعد انتهاء النقل
+        const room = rooms[roomCode];
+        if (!room) return;
+        room.transferring = false;
+        stopPickingTimer(roomCode);
         startInactivityTimer(roomCode);
     });
 
@@ -310,7 +333,11 @@ io.on("connection", (socket) => {
     socket.on("cancel-transfer", () => {
         const roomCode = findRoomBySocket(socket.id);
         if (!roomCode) return;
+        const room = rooms[roomCode];
+        if (!room) return;
+        room.transferring = false;
         socket.to(roomCode).emit("peer-cancelled-transfer");
+        stopPickingTimer(roomCode);
         startInactivityTimer(roomCode);
     });
 
