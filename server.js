@@ -84,7 +84,8 @@ async function ingestAnalytics(socket, payload) {
     file_types: Array.isArray(payload.fileTypes) ? payload.fileTypes : null,
     duration_ms: Number.isFinite(payload.durationMs) ? payload.durationMs : null,
     network: payload.network || null,
-    reason: payload.reason || null
+    reason: payload.reason || null,
+    peer_os: payload.peerOs || null
   };
   writeAnalytics(event); // حريق وانسَ — لا يمس أداء النقل أبداً
 }
@@ -123,6 +124,7 @@ function destroyRoom(code, reason = "room_destroyed") {
     console.log("destroyRoom: Destroying room", code, "Reason:", reason);
     if (room.waitingTimer)   clearTimeout(room.waitingTimer);
     if (room.inactivityTimer) clearTimeout(room.inactivityTimer);
+    if (room.inactivityWarningTimer) clearTimeout(room.inactivityWarningTimer);
     if (room.pickingTimer)   clearTimeout(room.pickingTimer);
 
     delete rooms[code];
@@ -176,8 +178,24 @@ function startInactivityTimer(code) {
         console.log("startInactivityTimer: Clearing existing timer for room", code);
         clearTimeout(room.inactivityTimer);
     }
+    if (room.inactivityWarningTimer) {
+        clearTimeout(room.inactivityWarningTimer);
+        room.inactivityWarningTimer = null;
+    }
 
     console.log("startInactivityTimer: Starting new timer for room", code, "Timeout:", INACTIVITY_TIMEOUT, "ms");
+    // تحذير قبل 20 ثانية من انتهاء المهلة — عداد تنازلي يظهر بالشاشة
+    const WARNING_BEFORE = 20 * 1000;
+    if (INACTIVITY_TIMEOUT > WARNING_BEFORE) {
+        room.inactivityWarningTimer = setTimeout(() => {
+            // لا تحذير إن أُعيد ضبط العداد منذ ذلك الحين (timer أُلغِي)
+            const r = rooms[code];
+            if (r && r.inactivityTimer) {
+                io.to(code).emit("inactivity-warning", { seconds: 20 });
+            }
+        }, INACTIVITY_TIMEOUT - WARNING_BEFORE);
+    }
+
     room.inactivityTimer = setTimeout(() => {
         const currentRoom = rooms[code];
         if (currentRoom) {
@@ -193,13 +211,17 @@ function startInactivityTimer(code) {
 
 function stopInactivityTimer(code) {
     const room = rooms[code];
-    if (!room || !room.inactivityTimer) {
+    if (!room || (!room.inactivityTimer && !room.inactivityWarningTimer)) {
         console.log("stopInactivityTimer: No timer to stop for room", code);
         return;
     }
     console.log("stopInactivityTimer: Stopping timer for room", code);
     clearTimeout(room.inactivityTimer);
     room.inactivityTimer = null;
+    if (room.inactivityWarningTimer) {
+        clearTimeout(room.inactivityWarningTimer);
+        room.inactivityWarningTimer = null;
+    }
 }
 
 function startPickingTimer(code) {
@@ -254,6 +276,7 @@ io.on("connection", (socket) => {
             peerDevice: null,
             waitingTimer: null,
             inactivityTimer: null,
+            inactivityWarningTimer: null,
             pickingTimer: null,
             transferring: false
         };
@@ -318,6 +341,8 @@ io.on("connection", (socket) => {
         console.log("session-activity: Resetting inactivity timer for room", roomCode);
         // إعادة تعيين عداد عدم النشاط عند أي نشاط
         startInactivityTimer(roomCode);
+        // الجلسة مشتركة بين الجهازين: أي نشاط يُلغي تحذير الإغلاق عند الطرفين معاً
+        io.to(roomCode).emit("inactivity-cancelled");
     });
 
     // المستلم لديه ملفات بانتظار التسليم — نوقف عداد عدم النشاط حتى ينتهي
