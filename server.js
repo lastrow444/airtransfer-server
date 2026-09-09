@@ -90,6 +90,49 @@ async function ingestAnalytics(socket, payload) {
   writeAnalytics(event); // حريق وانسَ — لا يمس أداء النقل أبداً
 }
 
+// ---------- استبيان الأداء ----------
+// جدول منفصل عن أحداث النقل (feedback): تقييم + رسالة + إيميل اختياري.
+// لا يُخزَّن شيء حساس غير الإيميل الذي يكتبه المستخدم طوعاً. يُكتب في Supabase عبر REST مثل writeAnalytics.
+const FEEDBACK_ISSUES = new Set(["بطيء", "خطأ حفظ", "ما لقيت الملفات", "الاستلام متعقّد"]);
+
+function writeFeedback(row) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) return; // لم يُضبط الإعداد بعد — لا نكسر أي شيء
+  const url = `${SUPABASE_URL}/rest/v1/feedback`;
+  httpJson(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": SUPABASE_KEY,
+      "Authorization": `Bearer ${SUPABASE_KEY}`
+    }
+  }, JSON.stringify([row]));
+}
+
+async function ingestFeedback(socket, payload) {
+  if (!payload || typeof payload !== "object") return;
+  const rating = Number.isInteger(payload.rating) ? Math.min(5, Math.max(1, payload.rating)) : null;
+  if (rating === null) return; // بلا تقييم صحيح — نهملها
+  const country = await resolveCountry(getClientIp(socket));
+  const issues = Array.isArray(payload.issues)
+    ? payload.issues.filter((i) => typeof i === "string" && FEEDBACK_ISSUES.has(i)).slice(0, 4)
+    : [];
+  const email = typeof payload.email === "string" ? payload.email.trim().slice(0, 320) : "";
+  const note = typeof payload.note === "string" ? payload.note.trim().slice(0, 500) : "";
+  const row = {
+    ts: new Date().toISOString(),
+    country,
+    device: payload.device || null,
+    os: payload.os || null,
+    peer_device: payload.peerDevice || null,
+    peer_os: payload.peerOs || null,
+    rating,
+    issues,
+    email: email || null,
+    note: note || null
+  };
+  writeFeedback(row); // حريق وانسَ — لا يمس أداء النقل أبداً
+}
+
 // ملفات الواجهة من مجلد client
 app.use(express.static(path.join(__dirname, "../client")));
 
@@ -457,6 +500,11 @@ io.on("connection", (socket) => {
     // تحليلات من العميل — حريق وانسَ (لا تُنتظر ولا تمس أداء النقل إطلاقاً)
     socket.on("track", (payload) => {
         ingestAnalytics(socket, payload);
+    });
+
+    // استبيان الأداء من العميل — حريق وانسَ مثل التحليلات
+    socket.on("feedback", (payload) => {
+        ingestFeedback(socket, payload);
     });
 
     // قطع الاتصال
